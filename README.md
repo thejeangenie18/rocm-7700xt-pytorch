@@ -119,14 +119,28 @@ This script loads the base model and the trained LoRA adapter, then prints a sam
 
 ## Screenshots
 
-### Training Run (ROCm RX 7700 XT)
-![Terminal showing accelerate launch command and full training log. A dark‑background terminal displays commands: navigating to /home/jg18/Project/rocm-7700xt-pytorch, activating a virtual environment, and running a multi‑line accelerate launch with flags: --mixed_precision bf16, --dynamo_backend=no, --num_processes=1, --num_machines=1, and training/qlora_demo_trainer.py. Arguments specify model EleutherAI/gpt-neo-125M, output_dir ./demo-output, 3 epochs, batch size 2, gradient accumulation 1, max_seq_length 128, learning_rate 5e-5, and --force_bf16 True. Training output follows: “[INFO] Loading model EleutherAI/gpt-neo-125M (dtype=torch.bfloat16)” and a transformers warning about torch_dtype being deprecated. A progress bar shows Loading weights: 100%. A load report table lists two UNEXPECTED keys: transformer.h.{0...11}.attn.attention.masked_bias and transformer.h.{0,2,4,6,8,10}.attn.attention.bias, with a note explaining UNEXPECTED keys. Trainable params: 294,912 of 125,493,504 (0.235%). Metrics appear: {'loss': '5.696', 'grad_norm': '1.228', 'learning_rate': '2.778e-05', 'epoch': '1.667'}. Final summary: {'train_runtime': '2.15', 'train_samples_per_second': '6.977', 'train_steps_per_second': '4.186', 'train_loss': '5.811', 'epoch': '3'}. A second progress bar shows 9/9 steps. Final lines: “[INFO] Saving adapter + tokenizer to ./demo-output” and “[DONE] Training complete.”](Pictures/Screenshot/demo.png)
+### Demo Training Run
+![Demo training run screenshot](Pictures/Screenshot/demo.png)
+**Alt Text (DeafBlind Standard):**  
+A terminal window on a dark background showing an accelerate launch command used to run a QLoRA demo trainer. The command includes flags for mixed precision bf16, dynamo backend disabled, one process, one machine, and the script `training/qlora_demo_trainer.py`. Arguments specify model `EleutherAI/gpt-neo-125M`, output directory `./demo-output`, three epochs, batch size two, gradient accumulation one, sequence length 128, learning rate 5e‑5, and `--force_bf16 True`.  
+The output shows the model loading in bfloat16, a warning about deprecated `torch_dtype`, a progress bar reaching 100%, and a load report listing unexpected attention bias keys. Training metrics appear, including loss decreasing from 5.696, grad_norm around 1.2, and learning rate decay. A final summary shows runtime 2.15 seconds, samples per second 6.977, steps per second 4.186, and final loss 5.811. The run ends with saving the adapter and tokenizer to `./demo-output` and a “DONE” message.
 
-### Training Output
-![Terminal showing ls -la demo-output. The prompt includes (rocm72). Output lists: total 4664; current directory ., parent directory ..; adapter_config.json (1024 bytes); adapter_model.safetensors (1,186,136 bytes); checkpoint-9 directory; README.md (5200 bytes); tokenizer_config.json (366 bytes); tokenizer.json (3,557,778 bytes). Each entry includes permissions, owner jg18, group jg18, file sizes, timestamps, and filenames in long-listing format.](Pictures/Screenshot/demo-2.png)
+### Demo Output Directory Listing
+![Demo output directory listing screenshot](Pictures/Screenshot/demo-2.png)
+**Alt Text (DeafBlind Standard):**  
+A terminal window showing `ls -la demo-output` inside a ROCm virtual environment. The listing includes:  
+- `adapter_config.json` (~1 KB)  
+- `adapter_model.safetensors` (~1.1 MB)  
+- `checkpoint-9/` directory  
+- `README.md` (~5 KB)  
+- `tokenizer_config.json`  
+- `tokenizer.json` (~3.5 MB)  
+Each entry shows permissions, owner `jg18`, group `jg18`, file sizes, timestamps, and filenames. This screenshot confirms that the LoRA adapter and tokenizer were saved correctly.
 
-### Validation Output
-![Terminal running python3 validate_demo.py. Output begins with a transformers warning: 'torch_dtype' is deprecated: Use 'dtype' instead!. A progress bar shows Loading weights: 100%. A load report for GPTNeoForCausalLM lists two UNEXPECTED keys: transformer.h.{0...11}.attn.attention.masked_bias and transformer.h.{0,2,4,6,8,10}.attn.attention.bias, with a note explaining UNEXPECTED keys. Another warning sets pad_token_id to eos_token_id 50256. A BPE tokenizer warning explains clean_up_tokenization_spaces behavior. The script prints generated text: “The purpose of this demo is to show you how to use the new API for the new API. The API is a simple API that allows you to create a new API. The API is a simple API that” ending mid‑sentence.](Pictures/Screenshot/demo-3.png)
+### Demo Validation Script
+![Demo validation script screenshot](Pictures/Screenshot/demo-3.png)
+**Alt Text (DeafBlind Standard):**  
+A terminal running `python3 validate_demo.py`. The output begins with a warning about deprecated `torch_dtype`, followed by a progress bar showing weights loading to 100%. A load report for GPTNeoForCausalLM lists unexpected attention bias keys. A warning sets `pad_token_id` to EOS token 50256. A tokenizer warning appears about `clean_up_tokenization_spaces`. The script prints generated text beginning with: “The purpose of this demo is to show you how to use the new API…” and continues mid‑sentence. This screenshot confirms that the adapter loads and inference works.
 
 ## 💡 Notes
 
@@ -134,6 +148,7 @@ This script loads the base model and the trained LoRA adapter, then prints a sam
 - Tokenizer cleanup warnings for GPT-Neo BPE are also harmless in this demo.
 - The example training data is intentionally small, so the adapter can overfit quickly and demonstrate that the fine-tuning step worked.
 - See `MODEL_CARD.md` for details about the demo adapter.
+
 ---
 
 ## 🧱 Hardware Requirements
