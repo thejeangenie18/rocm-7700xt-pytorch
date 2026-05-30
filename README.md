@@ -1,10 +1,10 @@
-# ROCm QLoRA Demo — Fine‑Tuning on AMD RX 7700 XT
+# ROCm QLoRA Demo - Fine‑Tuning on AMD RX 7700 XT
 
 A small, reproducible demo for fine‑tuning a LoRA adapter on AMD ROCm using PyTorch.
 This repository is designed for local ROCm workflows and avoids fragile cloud-dependent tooling.
 
 Tested on a real **AMD RX 7700 XT (12GB VRAM)**.
-Not included: blood, sweat, and tears 
+Not included: blood, sweat, and tears after being a pipeline rat.
 
 ---
 
@@ -46,7 +46,7 @@ It is intentionally minimal and stable, with a focus on reproducibility for loca
 
 ```bash
 source ~/rocm72/bin/activate
-cd /home/jg18/Project/rocm-7700xt-pytorch
+cd /home/usr/Project/rocm-7700xt-pytorch
 ```
 
 2. Run the training demo:
@@ -171,8 +171,5 @@ This repo includes a `.gitattributes` file to prevent GitHub from diffing binary
 ## 📝 License
 
 This repository is released under the **MIT License**.
-
-
-
 
 ```
