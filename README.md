@@ -22,7 +22,7 @@ It is intentionally minimal and stable, with a focus on reproducibility for loca
 
 ## 📁 Repository Structure
 
-- `training/qlora_demo_trainer.py` — ROCm-compatible QLoRA training script
+- `training/qlora_demo_trainer.py` — ROCm-compatible QLoRA training script (Phi-3 Mini, 4-bit)
 - `validate_demo.py` — load the saved adapter and generate a sample response
 - `requirements.txt` — Python dependencies
 - `demo-output/` — produced adapter and tokenizer files
@@ -32,9 +32,9 @@ It is intentionally minimal and stable, with a focus on reproducibility for loca
 ## ⚙️ Prerequisites
 
 - AMD GPU with ROCm support (tested on RX 7700 XT, 12GB VRAM)
-- ROCm-enabled PyTorch build
-- Python 3.10–3.12
-- `accelerate`, `transformers`, `peft`
+- ROCm 7.2.x-enabled PyTorch build
+- Python 3.10
+- `accelerate`, `transformers`, `peft`, `bitsandbytes`
 
 > If you use a different ROCm install path, update the activation command accordingly.
 
@@ -49,7 +49,13 @@ source ~/rocm72/bin/activate
 cd /home/usr/Project/rocm-7700xt-pytorch
 ```
 
-2. Run the training demo:
+2. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Run the training demo:
 
 ```bash
 accelerate launch \
@@ -58,17 +64,17 @@ accelerate launch \
   --num_processes=1 \
   --num_machines=1 \
   training/qlora_demo_trainer.py \
-  --model_name_or_path "EleutherAI/gpt-neo-125M" \
+  --model_name_or_path "microsoft/Phi-3-mini-4k-instruct" \
   --output_dir "./demo-output" \
   --num_train_epochs 3 \
   --per_device_train_batch_size 2 \
   --gradient_accumulation_steps 1 \
   --learning_rate 5e-5 \
   --max_seq_length 128 \
-  --force_bf16 True
+  --load_in_4bit True
 ```
 
-3. Verify the output files:
+4. Verify the output files:
 
 ```bash
 ls -la demo-output
@@ -81,7 +87,7 @@ Expected files:
 - `tokenizer.json`
 - `tokenizer_config.json`
 
-4. Validate the saved adapter:
+5. Validate the saved adapter:
 
 ```bash
 python validate_demo.py
@@ -90,18 +96,27 @@ python validate_demo.py
 ### Example `validate_demo.py`
 
 ```python
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 import torch
 
-BASE = "EleutherAI/gpt-neo-125M"
+BASE = "microsoft/Phi-3-mini-4k-instruct"
 ADAPTER = "./demo-output"
 
-tokenizer = AutoTokenizer.from_pretrained(BASE)
+tokenizer = AutoTokenizer.from_pretrained(BASE, trust_remote_code=True)
+
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16
+)
+
 model = AutoModelForCausalLM.from_pretrained(
     BASE,
-    torch_dtype=torch.bfloat16,
-    device_map="auto"
+    quantization_config=bnb_config,
+    device_map="auto",
+    trust_remote_code=True,
 )
 
 model = PeftModel.from_pretrained(model, ADAPTER)
@@ -113,39 +128,14 @@ out = model.generate(**inputs, max_new_tokens=40)
 print(tokenizer.decode(out[0], skip_special_tokens=True))
 ```
 
-This script loads the base model and the trained LoRA adapter, then prints a sample generated continuation.
+This script loads the base model in 4-bit and the trained LoRA adapter, then prints a sample generated continuation.
 
 ---
 
-## Screenshots
-
-### Demo Training Run
-![Demo training run screenshot](Pictures/Screenshot/demo.png)
-**Alt Text (DeafBlind Standard):**  
-A terminal window on a dark background showing an accelerate launch command used to run a QLoRA demo trainer. The command includes flags for mixed precision bf16, dynamo backend disabled, one process, one machine, and the script `training/qlora_demo_trainer.py`. Arguments specify model `EleutherAI/gpt-neo-125M`, output directory `./demo-output`, three epochs, batch size two, gradient accumulation one, sequence length 128, learning rate 5e‑5, and `--force_bf16 True`.  
-The output shows the model loading in bfloat16, a warning about deprecated `torch_dtype`, a progress bar reaching 100%, and a load report listing unexpected attention bias keys. Training metrics appear, including loss decreasing from 5.696, grad_norm around 1.2, and learning rate decay. A final summary shows runtime 2.15 seconds, samples per second 6.977, steps per second 4.186, and final loss 5.811. The run ends with saving the adapter and tokenizer to `./demo-output` and a “DONE” message.
-
-### Demo Output Directory Listing
-![Demo output directory listing screenshot](Pictures/Screenshot/demo-2.png)
-**Alt Text (DeafBlind Standard):**  
-A terminal window showing `ls -la demo-output` inside a ROCm virtual environment. The listing includes:  
-- `adapter_config.json` (~1 KB)  
-- `adapter_model.safetensors` (~1.1 MB)  
-- `checkpoint-9/` directory  
-- `README.md` (~5 KB)  
-- `tokenizer_config.json`  
-- `tokenizer.json` (~3.5 MB)  
-Each entry shows permissions, owner `jg18`, group `jg18`, file sizes, timestamps, and filenames. This screenshot confirms that the LoRA adapter and tokenizer were saved correctly.
-
-### Demo Validation Script
-![Demo validation script screenshot](Pictures/Screenshot/demo-3.png)
-**Alt Text (DeafBlind Standard):**  
-A terminal running `python3 validate_demo.py`. The output begins with a warning about deprecated `torch_dtype`, followed by a progress bar showing weights loading to 100%. A load report for GPTNeoForCausalLM lists unexpected attention bias keys. A warning sets `pad_token_id` to EOS token 50256. A tokenizer warning appears about `clean_up_tokenization_spaces`. The script prints generated text beginning with: “The purpose of this demo is to show you how to use the new API…” and continues mid‑sentence. This screenshot confirms that the adapter loads and inference works.
-
 ## 💡 Notes
 
-- Some `GPT-Neo` model loads may show `UNEXPECTED` key warnings for LoRA attention layers. This is expected and usually safe.
-- Tokenizer cleanup warnings for GPT-Neo BPE are also harmless in this demo.
+- Some `Phi-3` model loads may show `UNEXPECTED` key warnings for LoRA attention layers. This is expected and usually safe.
+- Tokenizer cleanup warnings for Phi-3 are also harmless in this demo.
 - The example training data is intentionally small, so the adapter can overfit quickly and demonstrate that the fine-tuning step worked.
 - See `MODEL_CARD.md` for details about the demo adapter.
 
@@ -154,10 +144,12 @@ A terminal running `python3 validate_demo.py`. The output begins with a warning 
 ## 🧱 Hardware Requirements
 
 - AMD RX 7700 XT (12GB VRAM)
-- ROCm 6.x
+- ROCm 7.2.x
 - PyTorch ROCm build
-- Python 3.10–3.12
-- `accelerate`, `transformers`, `peft`
+- Python 3.10
+- `accelerate`, `transformers`, `peft`, `bitsandbytes`
+
+---
 
 ## 📌 Requirements
 
@@ -171,8 +163,8 @@ pip install -r requirements.txt
 
 ## 🛠️ Troubleshooting
 
-- If you see `UNEXPECTED` keys when loading GPT‑Neo: this is normal for LoRA‑patched attention layers.
-- If you see tokenizer cleanup warnings: harmless for GPT‑Neo BPE.
+- If you see `UNEXPECTED` keys when loading Phi‑3: this is normal for LoRA‑patched attention layers.
+- If you see tokenizer cleanup warnings: harmless for Phi-3.
 - If `accelerate` complains about config: delete `~/.cache/huggingface/accelerate/default_config.yaml`.
 
 ---
@@ -202,7 +194,7 @@ Alt‑text pattern (recommended)
 Start your alt text with any exact visible text in quotes, then add structure and context. For example:
 
 ```
-"$ accelerate launch --mixed_precision=bf16 --num_processes=1". Terminal window with dark background showing the full training log, a Loading weights progress bar at 100%, UNEXPECTED keys warning for LoRA layers, metrics table with loss and epoch summaries, and final lines: "[INFO] Saving adapter + tokenizer to ./demo-output" and "[DONE] Training complete." Context: demonstrates a successful QLoRA training run on ROCm.
+"$ accelerate launch --mixed_precision=bf16 ...". Terminal window with dark background showing the full training log, a Loading weights progress bar at 100%, UNEXPECTED keys warning for LoRA layers, metrics table with loss and epoch summaries, and final lines: "[INFO] Saving adapter + tokenizer to ./demo-output" and "[DONE] Training complete." Context: demonstrates a successful QLoRA training run on ROCm.
 ```
 
 Concrete examples
@@ -244,4 +236,3 @@ This repo includes a `.gitattributes` file to prevent GitHub from diffing binary
 This repository is released under the **MIT License**.
 
 
-```

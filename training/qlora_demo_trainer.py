@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-ROCm-safe, version-agnostic QLoRA demo trainer.
+ROCm-safe, version-agnostic QLoRA demo trainer for Phi-3 Mini.
 
 This script:
 - Uses a tiny in-memory dataset (no HF datasets)
-- Avoids all features that break across Transformers versions
-- Uses BF16 (ROCm-friendly)
-- Uses LoRA via PEFT (no bitsandbytes)
+- Uses 4-bit quantization via bitsandbytes (QLoRA)
+- Uses BF16 compute (ROCm-friendly)
+- Uses LoRA via PEFT
 - Produces a working adapter folder for your GitHub demo
 """
 
@@ -23,9 +23,10 @@ from transformers import (
     TrainingArguments,
     Trainer,
     DataCollatorForLanguageModeling,
+    BitsAndBytesConfig,
 )
 
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 
 # -----------------------------
@@ -64,7 +65,7 @@ class TinyDataset(Dataset):
 # -----------------------------
 @dataclass
 class Args:
-    model_name_or_path: str = field(default="EleutherAI/gpt-neo-125M")
+    model_name_or_path: str = field(default="microsoft/Phi-3-mini-4k-instruct")
     output_dir: str = field(default="./demo-output")
     max_seq_length: int = field(default=128)
     num_train_epochs: int = field(default=3)
@@ -72,12 +73,12 @@ class Args:
     gradient_accumulation_steps: int = field(default=1)
     learning_rate: float = field(default=5e-5)
     seed: int = field(default=42)
-    force_bf16: bool = field(default=True)
+    load_in_4bit: bool = field(default=True)
     trust_remote_code: bool = field(default=True)
 
 
 def parse_args() -> Args:
-    parser = argparse.ArgumentParser(description="ROCm-safe QLoRA demo trainer")
+    parser = argparse.ArgumentParser(description="ROCm-safe QLoRA demo trainer for Phi-3 Mini")
     resolved = typing.get_type_hints(Args)
 
     for name, field_def in Args.__dataclass_fields__.items():
@@ -110,16 +111,26 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     torch.manual_seed(args.seed)
 
-    # Load model + tokenizer
-    dtype = torch.bfloat16 if args.force_bf16 else None
-    print(f"[INFO] Loading model {args.model_name_or_path} (dtype={dtype})")
+    # Load model + tokenizer with 4-bit quantization
+    print(f"[INFO] Loading model {args.model_name_or_path} in 4-bit")
+
+    # Configure 4-bit quantization
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16
+    )
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name_or_path,
-        torch_dtype=dtype,
+        quantization_config=bnb_config,
         device_map="auto",
         trust_remote_code=args.trust_remote_code,
     )
+
+    # Prepare model for k-bit training
+    model = prepare_model_for_kbit_training(model)
 
     try:
         model.gradient_checkpointing_enable()
@@ -141,6 +152,7 @@ def main():
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
+        target_modules=["q_proj", "v_proj"],  # Common for Phi-3
     )
     model = get_peft_model(model, lora_cfg)
     model.print_trainable_parameters()
@@ -158,7 +170,7 @@ def main():
         learning_rate=args.learning_rate,
         logging_steps=5,
         save_steps=999999,  # effectively disable mid-training saves
-        bf16=args.force_bf16,
+        bf16=True,  # We are using 4-bit with bfloat16 compute
         fp16=False,
         report_to="none",
         remove_unused_columns=False,
