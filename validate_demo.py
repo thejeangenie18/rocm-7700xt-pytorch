@@ -1,6 +1,7 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 import torch
+from optimum.quanto import freeze, qfloat8, quantize
 
 BASE = "microsoft/Phi-3-mini-4k-instruct"
 ADAPTER = "./demo-output"
@@ -8,21 +9,17 @@ ADAPTER = "./demo-output"
 # Load tokenizer
 tokenizer = AutoTokenizer.from_pretrained(BASE, trust_remote_code=True)
 
-# Configure 4-bit quantization for base model
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16
-)
-
-# Load base model in 4-bit
+# Load base model in bfloat16
 model = AutoModelForCausalLM.from_pretrained(
     BASE,
-    quantization_config=bnb_config,
+    torch_dtype=torch.bfloat16,
     device_map="auto",
     trust_remote_code=True,
 )
+
+# Apply Quanto quantization
+model = quantize(model, weights=qfloat8)
+freeze(model)
 
 # Load LoRA adapter
 model = PeftModel.from_pretrained(model, ADAPTER)

@@ -4,7 +4,7 @@ ROCm-safe, version-agnostic QLoRA demo trainer for Phi-3 Mini.
 
 This script:
 - Uses a tiny in-memory dataset (no HF datasets)
-- Uses 4-bit quantization via bitsandbytes (QLoRA)
+- Uses 4-bit quantization via Quanto
 - Uses BF16 compute (ROCm-friendly)
 - Uses LoRA via PEFT
 - Produces a working adapter folder for your GitHub demo
@@ -23,10 +23,10 @@ from transformers import (
     TrainingArguments,
     Trainer,
     DataCollatorForLanguageModeling,
-    BitsAndBytesConfig,
 )
 
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, get_peft_model
+from optimum.quanto import freeze, qfloat8, quantize
 
 
 # -----------------------------
@@ -111,31 +111,19 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     torch.manual_seed(args.seed)
 
-    # Load model + tokenizer with 4-bit quantization
-    print(f"[INFO] Loading model {args.model_name_or_path} in 4-bit")
-
-    # Configure 4-bit quantization
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16
-    )
+    # Load model + tokenizer with Quanto quantization
+    print(f"[INFO] Loading model {args.model_name_or_path} in bfloat16")
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name_or_path,
-        quantization_config=bnb_config,
+        torch_dtype=torch.bfloat16,
         device_map="auto",
         trust_remote_code=args.trust_remote_code,
     )
 
-    # Prepare model for k-bit training
-    model = prepare_model_for_kbit_training(model)
-
-    try:
-        model.gradient_checkpointing_enable()
-    except Exception:
-        pass
+    # Apply Quanto quantization
+    model = quantize(model, weights=qfloat8)
+    freeze(model)
 
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_name_or_path,
@@ -144,6 +132,12 @@ def main():
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+
+    # Enable gradient checkpointing if supported
+    try:
+        model.gradient_checkpointing_enable()
+    except Exception:
+        pass
 
     # LoRA config
     lora_cfg = LoraConfig(

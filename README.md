@@ -34,7 +34,7 @@ It is intentionally minimal and stable, with a focus on reproducibility for loca
 - AMD GPU with ROCm support (tested on RX 7700 XT, 12GB VRAM)
 - ROCm 7.2.x-enabled PyTorch build
 - Python 3.10
-- `accelerate`, `transformers`, `peft`, `bitsandbytes`
+- `accelerate`, `transformers`, `peft`, `optimum[quanto]`
 
 > If you use a different ROCm install path, update the activation command accordingly.
 
@@ -71,7 +71,7 @@ accelerate launch \
   --gradient_accumulation_steps 1 \
   --learning_rate 5e-5 \
   --max_seq_length 128 \
-  --load_in_4bit True
+  --load_in_4bit False
 ```
 
 4. Verify the output files:
@@ -96,29 +96,29 @@ python validate_demo.py
 ### Example `validate_demo.py`
 
 ```python
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 import torch
+from optimum.quanto import freeze, qfloat8, quantize
 
 BASE = "microsoft/Phi-3-mini-4k-instruct"
 ADAPTER = "./demo-output"
 
 tokenizer = AutoTokenizer.from_pretrained(BASE, trust_remote_code=True)
 
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16
-)
-
+# Load base model in bfloat16
 model = AutoModelForCausalLM.from_pretrained(
     BASE,
-    quantization_config=bnb_config,
+    torch_dtype=torch.bfloat16,
     device_map="auto",
     trust_remote_code=True,
 )
 
+# Apply Quanto quantization
+model = quantize(model, weights=qfloat8)
+freeze(model)
+
+# Load LoRA adapter
 model = PeftModel.from_pretrained(model, ADAPTER)
 
 prompt = "The purpose of this demo is"
@@ -128,7 +128,7 @@ out = model.generate(**inputs, max_new_tokens=40)
 print(tokenizer.decode(out[0], skip_special_tokens=True))
 ```
 
-This script loads the base model in 4-bit and the trained LoRA adapter, then prints a sample generated continuation.
+This script loads the base model in bfloat16, applies Quanto quantization, and loads the trained LoRA adapter, then prints a sample generated continuation.
 
 ---
 
@@ -147,7 +147,7 @@ This script loads the base model in 4-bit and the trained LoRA adapter, then pri
 - ROCm 7.2.x
 - PyTorch ROCm build
 - Python 3.10
-- `accelerate`, `transformers`, `peft`, `bitsandbytes`
+- `accelerate`, `transformers`, `peft`, `optimum[quanto]`
 
 ---
 
